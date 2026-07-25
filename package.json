@@ -1,0 +1,31 @@
+{
+  "name": "nizkiy-profil-crm",
+  "productName": "NizkiyProfil CRM",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Настольная CRM шиномонтажа «Низкий профиль»",
+  "author": "Низкий профиль",
+  "main": "./out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "typecheck": "tsc --noEmit",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "dist": "electron-vite build && electron-builder --win --publish never",
+    "dist:portable": "electron-vite build && electron-builder --win portable --publish never"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^20.14.10",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "electron": "^31.2.0",
+    "electron-builder": "^24.13.3",
+    "electron-vite": "^2.3.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "typescript": "^5.5.3",
+    "vite": "^5.3.3"
+  }
+}

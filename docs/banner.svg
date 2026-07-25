@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360" role="img" aria-label="87:89 ?@>D8;L CRM">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0e1116"/>
+      <stop offset="55%" stop-color="#151a21"/>
+      <stop offset="100%" stop-color="#1b222b"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#f0a63c"/>
+      <stop offset="100%" stop-color="#ffc56b"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="360" fill="url(#bg)"/>
+  <circle cx="1040" cy="-40" r="220" fill="#f0a63c" opacity="0.07"/>
+  <circle cx="160" cy="400" r="180" fill="#3d9df6" opacity="0.06"/>
+
+  <!-- slot grid hint -->
+  <g opacity="0.35" stroke="#2b3644" stroke-width="1">
+    <line x1="620" y1="90" x2="1120" y2="90"/>
+    <line x1="620" y1="140" x2="1120" y2="140"/>
+    <line x1="620" y1="190" x2="1120" y2="190"/>
+    <line x1="620" y1="240" x2="1120" y2="240"/>
+    <line x1="620" y1="290" x2="1120" y2="290"/>
+  </g>
+  <rect x="700" y="100" width="130" height="32" rx="5" fill="#1b222b" stroke="#f0a63c" stroke-width="2"/>
+  <rect x="840" y="100" width="120" height="32" rx="5" fill="#1b222b" stroke="#3d9df6" stroke-width="2"/>
+  <rect x="970" y="100" width="110" height="32" rx="5" fill="#1b222b" stroke="#a879f0" stroke-width="2"/>
+  <rect x="700" y="200" width="150" height="32" rx="5" fill="#1b222b" stroke="#2fbf71" stroke-width="2"/>
+
+  <text x="64" y="130" fill="#f0a63c" font-family="Segoe UI, Arial, sans-serif" font-size="18" font-weight="600" letter-spacing="4">DESKTOP CRM</text>
+  <text x="64" y="190" fill="#e7ecf3" font-family="Segoe UI, Arial, sans-serif" font-size="52" font-weight="700">87:89 ?@>D8;L</text>
+  <text x="64" y="245" fill="#8c99ab" font-family="Segoe UI, Arial, sans-serif" font-size="22"> 0A?8A0=85 H8=><>=B060 · >172>= · SMS</text>
+  <rect x="64" y="280" width="180" height="4" rx="2" fill="url(#accent)"/>
+</svg>

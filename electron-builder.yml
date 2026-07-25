@@ -1,0 +1,34 @@
+appId: ru.nizkiyprofil.crm
+# Латиница: productName попадает в пути установки и папку профиля пользователя.
+# Русское название видно в заголовке окна и на ярлыке.
+productName: NizkiyProfil CRM
+copyright: Низкий профиль, Жулебино
+
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - out/**
+  - package.json
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  artifactName: NizkiyProfil-CRM-${version}-setup.${ext}
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  shortcutName: Низкий профиль CRM
+
+mac:
+  target: dmg
+  category: public.app-category.business
+
+linux:
+  target: AppImage
+  category: Office
