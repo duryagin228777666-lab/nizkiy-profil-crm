@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360" role="img" aria-label="87:89 ?@>D8;L CRM">
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360" role="img" aria-label="Низкий профиль CRM">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0%" stop-color="#0e1116"/>
@@ -28,7 +28,7 @@
   <rect x="700" y="200" width="150" height="32" rx="5" fill="#1b222b" stroke="#2fbf71" stroke-width="2"/>
 
   <text x="64" y="130" fill="#f0a63c" font-family="Segoe UI, Arial, sans-serif" font-size="18" font-weight="600" letter-spacing="4">DESKTOP CRM</text>
-  <text x="64" y="190" fill="#e7ecf3" font-family="Segoe UI, Arial, sans-serif" font-size="52" font-weight="700">87:89 ?@>D8;L</text>
-  <text x="64" y="245" fill="#8c99ab" font-family="Segoe UI, Arial, sans-serif" font-size="22"> 0A?8A0=85 H8=><>=B060 � >172>= � SMS</text>
+  <text x="64" y="190" fill="#e7ecf3" font-family="Segoe UI, Arial, sans-serif" font-size="52" font-weight="700">Низкий профиль</text>
+  <text x="64" y="245" fill="#8c99ab" font-family="Segoe UI, Arial, sans-serif" font-size="22">расписание шиномонтажа · обзвон · SMS</text>
   <rect x="64" y="280" width="180" height="4" rx="2" fill="url(#accent)"/>
 </svg>
