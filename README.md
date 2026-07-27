@@ -52,6 +52,11 @@
 ## Скриншоты
 
 <p align="center">
+  <img src="docs/screenshots/day.png" alt="Расписание дня" width="100%" />
+  <br/><em>Расписание — сетка слотов и карточка клиента</em>
+</p>
+
+<p align="center">
   <img src="docs/screenshots/inbox.png" alt="Необработанные заявки" width="100%" />
   <br/><em>Необработанные — заявки без времени визита</em>
 </p>
