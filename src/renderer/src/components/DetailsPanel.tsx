@@ -1,11 +1,15 @@
-import { STATUS_LABEL, STATUS_ORDER } from '../../../shared/constants'
+import { CHANNEL_LABEL, CHANNEL_ORDER, STATUS_LABEL, STATUS_ORDER } from '../../../shared/constants'
 import { formatPhone, telHref } from '../../../shared/phone'
 import { formatVisitHuman } from '../../../shared/time'
-import type { Booking, BookingStatus } from '../../../shared/types'
+import type { Booking, BookingStatus, ChannelAvailability, NotifyChannel } from '../../../shared/types'
 import { IconClose, IconEdit, IconMail, IconPhone, IconTrash } from './Icons'
+import { channelUsable, defaultChannel } from './MessageDialog'
 
 interface Props {
   booking: Booking | null
+  channels: ChannelAvailability
+  onChannelChange: (booking: Booking, channel: NotifyChannel | '') => void
+  onMessage: (booking: Booking) => void
   onClose: () => void
   onEdit: (booking: Booking) => void
   onDelete: (booking: Booking) => void
@@ -15,8 +19,18 @@ interface Props {
   onClearVisit: (booking: Booking) => void
 }
 
+function reminderLabel(booking: Booking): string {
+  if (!booking.reminder_sent) return 'Напоминание не отправлено'
+  if (booking.reminder_error) return 'Напоминание не дошло'
+  if (booking.reminder_channel) return `Напоминание · ${CHANNEL_LABEL[booking.reminder_channel]}`
+  return 'Напоминание отправлено'
+}
+
 export function DetailsPanel({
   booking,
+  channels,
+  onChannelChange,
+  onMessage,
   onClose,
   onEdit,
   onDelete,
@@ -31,7 +45,8 @@ export function DetailsPanel({
         <p className="empty">
           Выберите карточку, чтобы увидеть детали.
           <br />
-          <kbd>N</kbd> новый · <kbd>Enter</kbd> изменить · <kbd>C</kbd> обзвон · <kbd>S</kbd> SMS · <kbd>Del</kbd> отменить
+          <kbd>N</kbd> новый · <kbd>Enter</kbd> изменить · <kbd>C</kbd> обзвон · <kbd>S</kbd> напоминание ·{' '}
+          <kbd>M</kbd> написать · <kbd>Del</kbd> отменить
         </p>
       </aside>
     )
@@ -98,13 +113,48 @@ export function DetailsPanel({
         </button>
         <button
           type="button"
-          className={`flag-btn ${booking.reminder_sent ? 'is-on' : ''}`}
+          className={`flag-btn ${booking.reminder_sent && !booking.reminder_error ? 'is-on' : ''}`}
           onClick={() => onToggleSms(booking)}
-          title="Переключить отметку SMS (S)"
+          title={booking.reminder_error || 'Переключить отметку напоминания (S)'}
         >
           <IconMail size={14} />
-          {booking.reminder_sent ? 'SMS отправлено' : 'SMS не отправлено'}
+          {reminderLabel(booking)}
         </button>
+      </div>
+      {booking.reminder_error ? <p className="field-error">{booking.reminder_error}</p> : null}
+
+      <div className="details-status">
+        <span className="details-label">Канал связи</span>
+        <div className="status-row details-channel">
+          <select
+            value={booking.notify_channel}
+            onChange={(event) => onChannelChange(booking, event.target.value as NotifyChannel | '')}
+          >
+            <option value="">
+              Авто{(() => {
+                const auto = defaultChannel({ ...booking, notify_channel: '' }, channels)
+                return auto ? ` (${CHANNEL_LABEL[auto]})` : ''
+              })()}
+            </option>
+            {CHANNEL_ORDER.map((channel) => (
+              <option key={channel} value={channel} disabled={!channelUsable(booking, channels, channel)}>
+                {CHANNEL_LABEL[channel]}
+                {channel === 'telegram' && !booking.tg_linked ? ' — клиент не открывал бота' : ''}
+                {channel !== 'telegram' && !channels[channel] ? ' — не подключено' : ''}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className="ghost-btn"
+            onClick={() => onMessage(booking)}
+            disabled={!defaultChannel(booking, channels)}
+            title="Написать клиенту (M)"
+          >
+            <IconMail size={14} />
+            Написать
+          </button>
+        </div>
       </div>
 
       <div className="details-status">

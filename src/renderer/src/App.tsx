@@ -5,6 +5,8 @@ import { DayGrid } from './components/DayGrid'
 import { DetailsPanel } from './components/DetailsPanel'
 import { IconAlert, IconSettings } from './components/Icons'
 import { InboxPage } from './components/InboxPage'
+import { defaultChannel, MessageDialog } from './components/MessageDialog'
+import { sendMessage } from './api'
 import { SettingsDialog } from './components/SettingsDialog'
 import { Toasts } from './components/Toasts'
 import { Toolbar } from './components/Toolbar'
@@ -12,7 +14,7 @@ import { useDay } from './hooks/useDay'
 import { useHotkeys } from './hooks/useHotkeys'
 import { useToasts } from './hooks/useToasts'
 import { applyFilters, EMPTY_FILTERS, type Filters } from './lib/filters'
-import { STATUS_LABEL } from '../../shared/constants'
+import { CHANNEL_LABEL, STATUS_LABEL } from '../../shared/constants'
 import { composeVisitAt, shiftDate, todayIso, visitTime } from '../../shared/time'
 import type {
   AppPage,
@@ -21,6 +23,7 @@ import type {
   BookingStatus,
   DeleteMode,
   MenuCommand,
+  NotifyChannel,
   PublicSettings
 } from '../../shared/types'
 
@@ -39,6 +42,8 @@ export default function App() {
   const [dragCode, setDragCode] = useState<string | null>(null)
   const [dropTarget, setDropTarget] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [messageTarget, setMessageTarget] = useState<Booking | null>(null)
+  const [sending, setSending] = useState(false)
 
   const searchRef = useRef<HTMLInputElement | null>(null)
   const day = useDay(settings, onError)
@@ -145,9 +150,46 @@ export default function App() {
     async (booking: Booking) => {
       const next = !booking.reminder_sent
       const result = await day.update(booking.code, { reminder_sent: next })
-      if (result) push('success', next ? 'Отмечено: SMS отправлено' : 'Отметка SMS снята')
+      if (result) push('success', next ? 'Отмечено: напоминание отправлено' : 'Отметка напоминания снята')
     },
     [day, push]
+  )
+
+  const changeChannel = useCallback(
+    async (booking: Booking, channel: NotifyChannel | '') => {
+      if (booking.notify_channel === channel) return
+      const result = await day.update(booking.code, { notify_channel: channel })
+      if (result) push('success', `${result.name}: канал — ${channel ? CHANNEL_LABEL[channel] : 'авто'}`)
+    },
+    [day, push]
+  )
+
+  const openMessage = useCallback(
+    (booking: Booking) => {
+      setContextMenu(null)
+      if (!defaultChannel(booking, day.day.channels)) {
+        push('error', 'Нет доступного канала: клиент не в Telegram, WhatsApp не подключён')
+        return
+      }
+      setMessageTarget(booking)
+    },
+    [day.day.channels, push]
+  )
+
+  const sendClientMessage = useCallback(
+    async (text: string, channel: NotifyChannel) => {
+      if (!messageTarget) return
+      setSending(true)
+      const result = await sendMessage(messageTarget.code, text, channel)
+      setSending(false)
+      if (!result.ok) {
+        push('error', result.error)
+        return
+      }
+      setMessageTarget(null)
+      push('success', `${messageTarget.name}: отправлено в ${CHANNEL_LABEL[result.data.channel] ?? result.data.channel}`)
+    },
+    [messageTarget, push]
   )
 
   const changeStatus = useCallback(
@@ -265,7 +307,7 @@ export default function App() {
     return window.crm.onMenuCommand(handleMenuCommand)
   }, [handleMenuCommand])
 
-  const modalOpen = dialog !== null || settingsOpen
+  const modalOpen = dialog !== null || settingsOpen || messageTarget !== null
 
   useHotkeys(
     {
@@ -274,6 +316,7 @@ export default function App() {
       remove: () => selected && void deleteBooking(selected, settings?.defaultDeleteMode ?? 'cancel'),
       toggleCalled: () => selected && void toggleCalled(selected),
       toggleSms: () => selected && void toggleSms(selected),
+      message: () => selected && openMessage(selected),
       refresh: () => void day.refresh(),
       prevDay: () => {
         setPage('day')
@@ -296,6 +339,7 @@ export default function App() {
       },
       escape: () => {
         if (contextMenu) setContextMenu(null)
+        else if (messageTarget) setMessageTarget(null)
         else if (dialog) setDialog(null)
         else if (settingsOpen) setSettingsOpen(false)
         else setSelectedCode(null)
@@ -314,9 +358,10 @@ export default function App() {
         onClick: () => void toggleCalled(booking)
       },
       {
-        label: booking.reminder_sent ? 'Снять отметку SMS' : 'Отметить: SMS отправлено',
+        label: booking.reminder_sent ? 'Снять отметку напоминания' : 'Отметить: напоминание отправлено',
         onClick: () => void toggleSms(booking)
       },
+      { label: 'Написать клиенту', onClick: () => openMessage(booking) },
       {
         label: booking.visit_at ? 'В необработанные (убрать время)' : 'Назначить время…',
         separatorBefore: true,
@@ -329,7 +374,7 @@ export default function App() {
       },
       { label: 'Удалить навсегда', danger: true, onClick: () => void deleteBooking(booking, 'purge') }
     ]
-  }, [contextMenu, openEdit, toggleCalled, toggleSms, clearVisit, openSchedule, deleteBooking])
+  }, [contextMenu, openEdit, toggleCalled, toggleSms, openMessage, clearVisit, openSchedule, deleteBooking])
 
   if (bootError) {
     return (
@@ -403,6 +448,9 @@ export default function App() {
             onToggleSms={(booking) => void toggleSms(booking)}
             onStatusChange={(booking, status) => void changeStatus(booking, status)}
             onClearVisit={(booking) => void clearVisit(booking)}
+            channels={day.day.channels}
+            onChannelChange={(booking, channel) => void changeChannel(booking, channel)}
+            onMessage={openMessage}
           />
         </main>
       ) : (
@@ -441,9 +489,22 @@ export default function App() {
             onToggleSms={(booking) => void toggleSms(booking)}
             onStatusChange={(booking, status) => void changeStatus(booking, status)}
             onClearVisit={(booking) => void clearVisit(booking)}
+            channels={day.day.channels}
+            onChannelChange={(booking, channel) => void changeChannel(booking, channel)}
+            onMessage={openMessage}
           />
         </main>
       )}
+
+      {messageTarget ? (
+        <MessageDialog
+          booking={messageTarget}
+          channels={day.day.channels}
+          sending={sending}
+          onSend={(text, channel) => void sendClientMessage(text, channel)}
+          onClose={() => setMessageTarget(null)}
+        />
+      ) : null}
 
       {dialog ? (
         <BookingDialog

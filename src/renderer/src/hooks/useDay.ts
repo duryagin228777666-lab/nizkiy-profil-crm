@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createBooking, fetchDay, patchBooking, removeBooking } from '../api'
-import { DEFAULT_GRID, SERVICES } from '../../../shared/constants'
+import { DEFAULT_GRID, NO_CHANNELS, SERVICES } from '../../../shared/constants'
 import { todayIso, visitDate } from '../../../shared/time'
 import type {
   Booking,
@@ -15,7 +15,8 @@ const EMPTY_DAY: DayPayload = {
   scheduled: [],
   unscheduled: [],
   services: [...SERVICES],
-  settings: DEFAULT_GRID
+  settings: DEFAULT_GRID,
+  channels: NO_CHANNELS
 }
 
 function sortScheduled(items: Booking[]): Booking[] {

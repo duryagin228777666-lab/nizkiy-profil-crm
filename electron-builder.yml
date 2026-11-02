@@ -13,6 +13,9 @@ files:
   - package.json
 
 win:
+  # Без Developer Mode winCodeSign не распаковывается (symlinks).
+  # Иконки пока нет — rcedit/подпись не нужны.
+  signAndEditExecutable: false
   target:
     - target: nsis
       arch: [x64]

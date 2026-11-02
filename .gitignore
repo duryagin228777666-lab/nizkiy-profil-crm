@@ -8,4 +8,5 @@ release/
 .env
 .env.local
 .vscode/
-*.local.*
+tmp-smoke/
+NOTES.md.bak

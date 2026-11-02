@@ -6,6 +6,7 @@ export interface HotkeyHandlers {
   remove: () => void
   toggleCalled: () => void
   toggleSms: () => void
+  message: () => void
   refresh: () => void
   prevDay: () => void
   nextDay: () => void
@@ -82,6 +83,13 @@ export function useHotkeys(handlers: HotkeyHandlers, blocked: boolean): void {
         case 'Ы':
           event.preventDefault()
           h.toggleSms()
+          break
+        case 'm':
+        case 'M':
+        case 'ь':
+        case 'Ь':
+          event.preventDefault()
+          h.message()
           break
         case 't':
         case 'T':

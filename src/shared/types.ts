@@ -1,5 +1,11 @@
 export type BookingStatus = 'new' | 'confirmed' | 'in_progress' | 'done' | 'cancelled'
 
+/** Канал связи с клиентом. Пустая строка в заявке = выбрать автоматически. */
+export type NotifyChannel = 'telegram' | 'whatsapp' | 'sms'
+
+/** Какие каналы включены на сервере (/api/crm/meta). */
+export type ChannelAvailability = Record<NotifyChannel, boolean>
+
 /** Заявка. Формат один в один с server/store.py — CRM не заводит своих полей. */
 export interface Booking {
   id: number
@@ -16,6 +22,13 @@ export interface Booking {
   called: boolean
   called_at: string | null
   created_at: string
+  /** Канал из карточки; '' = Telegram, если клиент привязан, иначе WhatsApp */
+  notify_channel: NotifyChannel | ''
+  /** Клиент открывал бота — ему можно писать в Telegram */
+  tg_linked: boolean
+  /** Куда ушло напоминание ('' — не отправлялось или не дошло) */
+  reminder_channel: NotifyChannel | ''
+  reminder_error: string
 }
 
 /** Параметры сетки дня. Сервер отдаёт их в /api/crm/meta, локально можно переопределить. */
@@ -28,6 +41,7 @@ export interface GridSettings {
 }
 
 export interface DayPayload {
+  channels: ChannelAvailability
   date: string
   scheduled: Booking[]
   unscheduled: Booking[]
@@ -45,6 +59,7 @@ export interface BookingInput {
   status?: BookingStatus
   called?: boolean
   reminder_sent?: boolean
+  notify_channel?: NotifyChannel | ''
 }
 
 export type DeleteMode = 'cancel' | 'purge'

@@ -1219,6 +1219,16 @@ kbd {
   gap: 18px;
   flex-wrap: wrap;
 }
+/* Шаблоны сообщения клиенту */
+.template-row {
+  flex-direction: row;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.details-channel select {
+  flex: 1;
+  min-width: 0;
+}
 .switch {
   display: flex;
   align-items: center;

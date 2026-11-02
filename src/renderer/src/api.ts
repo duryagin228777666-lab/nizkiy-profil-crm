@@ -1,11 +1,13 @@
-import { DEFAULT_GRID, SERVICES } from '../../shared/constants'
+import { DEFAULT_GRID, NO_CHANNELS, SERVICES } from '../../shared/constants'
 import type {
   ApiResult,
   Booking,
   BookingInput,
+  ChannelAvailability,
   DayPayload,
   DeleteMode,
-  GridSettings
+  GridSettings,
+  NotifyChannel
 } from '../../shared/types'
 
 function unwrap<T>(result: ApiResult<unknown>, pick: (data: Record<string, unknown>) => T): ApiResult<T> {
@@ -25,8 +27,21 @@ export async function fetchDay(date: string): Promise<ApiResult<DayPayload>> {
     scheduled: asBookings(data.scheduled),
     unscheduled: asBookings(data.unscheduled),
     services: Array.isArray(data.services) ? (data.services as string[]) : [...SERVICES],
-    settings: { ...DEFAULT_GRID, ...((data.settings ?? {}) as Partial<GridSettings>) }
+    settings: { ...DEFAULT_GRID, ...((data.settings ?? {}) as Partial<GridSettings>) },
+    channels: { ...NO_CHANNELS, ...((data.channels ?? {}) as Partial<ChannelAvailability>) }
   }))
+}
+
+/** Ручное сообщение клиенту. Без channel сервер берёт канал из карточки. */
+export async function sendMessage(
+  code: string,
+  text: string,
+  channel?: NotifyChannel
+): Promise<ApiResult<{ channel: NotifyChannel }>> {
+  const body: Record<string, unknown> = { text }
+  if (channel) body.channel = channel
+  const result = await window.crm.request('POST', `/bookings/${encodeURIComponent(code)}/message`, body)
+  return unwrap(result, (data) => ({ channel: data.channel as NotifyChannel }))
 }
 
 export async function createBooking(input: BookingInput): Promise<ApiResult<Booking>> {

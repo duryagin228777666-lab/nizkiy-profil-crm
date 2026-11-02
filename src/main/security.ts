@@ -9,6 +9,9 @@ const ALLOWED_METHODS = new Set(['GET', 'POST', 'PATCH', 'DELETE'])
 const ALLOWED_PATH =
   /^\/(meta|bookings)(\/[A-Z0-9]{5,12})?(\?(date=\d{4}-\d{2}-\d{2}|mode=(cancel|purge)))?$/i
 
+/** Отправка сообщения клиенту: только /bookings/<код>/message, без query. */
+const MESSAGE_PATH = /^\/bookings\/[A-Z0-9]{5,12}\/message$/i
+
 const SAFE_EXTERNAL = /^(https?:|tel:|mailto:)/i
 
 export function isAllowedMethod(method: unknown): method is 'GET' | 'POST' | 'PATCH' | 'DELETE' {
@@ -25,7 +28,7 @@ export function sanitizeApiPath(path: unknown): string | null {
   if (!path.startsWith('/')) return null
   // Убираем фрагменты и нормализуем повторные слэши в пути (не в query)
   const cleaned = path.replace(/#.*$/, '').replace(/\/{2,}/g, '/')
-  if (!ALLOWED_PATH.test(cleaned)) return null
+  if (!ALLOWED_PATH.test(cleaned) && !MESSAGE_PATH.test(cleaned)) return null
   return cleaned
 }
 

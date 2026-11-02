@@ -15,7 +15,14 @@ import {
 } from '../shared/constants'
 import { normalizePhone } from '../shared/phone'
 import { shiftDate, todayIso, visitDate } from '../shared/time'
-import type { ApiResult, Booking, BookingStatus, HttpMethod } from '../shared/types'
+import type {
+  ApiResult,
+  Booking,
+  BookingStatus,
+  ChannelAvailability,
+  HttpMethod,
+  NotifyChannel
+} from '../shared/types'
 import { userDataFile } from './settings'
 
 interface MockDb {
@@ -24,6 +31,17 @@ interface MockDb {
 }
 
 const EDITABLE_TEXT = ['name', 'phone', 'service', 'comment'] as const
+
+/** В демо «включены» мессенджеры, SMS — как на сервере, ещё нет. */
+const MOCK_CHANNELS: ChannelAvailability = { telegram: true, whatsapp: true, sms: false }
+
+/** Поля, появившиеся позже: старый демо-файл их не содержит. */
+const LATE_FIELDS: Pick<Booking, 'notify_channel' | 'tg_linked' | 'reminder_channel' | 'reminder_error'> = {
+  notify_channel: '',
+  tg_linked: false,
+  reminder_channel: '',
+  reminder_error: ''
+}
 
 let db: MockDb | null = null
 
@@ -54,11 +72,11 @@ function seed(): MockDb {
   const tomorrow = shiftDate(today, 1)
   const taken = new Set<string>()
   const rows: Array<Partial<Booking> & { name: string; phone: string; service: string }> = [
-    { name: 'Иван Соколов', phone: '79161234567', service: 'Шиномонтаж', visit_at: `${today} 10:00`, status: 'confirmed', called: true, reminder_sent: true },
+    { name: 'Иван Соколов', phone: '79161234567', service: 'Шиномонтаж', visit_at: `${today} 10:00`, status: 'confirmed', called: true, reminder_sent: true, tg_linked: true, notify_channel: 'telegram', reminder_channel: 'telegram' },
     { name: 'Марина Ковалёва', phone: '79031112233', service: 'Правка дисков', visit_at: `${today} 10:00`, status: 'confirmed', called: true },
-    { name: 'Пётр Абрамов', phone: '79267778899', service: 'Виброконтроль Hunter', visit_at: `${today} 10:00`, status: 'in_progress', called: true, reminder_sent: true },
+    { name: 'Пётр Абрамов', phone: '79267778899', service: 'Виброконтроль Hunter', visit_at: `${today} 10:00`, status: 'in_progress', called: true, reminder_sent: true, reminder_channel: 'whatsapp' },
     { name: 'Сергей Гринёв', phone: '79104445566', service: 'Аргонная сварка', visit_at: `${today} 11:30`, status: 'confirmed' },
-    { name: 'Ольга Пименова', phone: '79852223344', service: 'Хранение шин', visit_at: `${today} 13:00`, status: 'done', called: true, reminder_sent: true },
+    { name: 'Ольга Пименова', phone: '79852223344', service: 'Хранение шин', visit_at: `${today} 13:00`, status: 'done', called: true, reminder_sent: true, reminder_error: 'WhatsApp: номер не зарегистрирован' },
     { name: 'Артём Лаптев', phone: '79996667788', service: 'Продажа шин', visit_at: `${today} 16:30`, status: 'confirmed', called: true },
     { name: 'Николай Дё', phone: '79055554433', service: 'Порошковая покраска', visit_at: `${tomorrow} 09:30`, status: 'confirmed' },
     { name: 'Алексей Ким', phone: '79167770011', service: 'Шиномонтаж', source: 'site' },
@@ -83,7 +101,11 @@ function seed(): MockDb {
       reminder_sent: row.reminder_sent ?? false,
       called: row.called ?? false,
       called_at: row.called ? nowStamp() : null,
-      created_at: nowStamp()
+      created_at: nowStamp(),
+      notify_channel: row.notify_channel ?? '',
+      tg_linked: row.tg_linked ?? false,
+      reminder_channel: row.reminder_channel ?? '',
+      reminder_error: row.reminder_error ?? ''
     }
   })
 
@@ -101,6 +123,7 @@ function load(): MockDb {
     try {
       const parsed = JSON.parse(readFileSync(file, 'utf-8')) as MockDb
       if (Array.isArray(parsed?.bookings)) {
+        parsed.bookings = parsed.bookings.map((b) => ({ ...LATE_FIELDS, ...b }))
         db = parsed
         return db
       }
@@ -161,6 +184,8 @@ function applyPatch(booking: Booking, fields: Record<string, unknown>): string |
     if (raw !== booking.visit_at) {
       booking.visit_at = raw
       booking.reminder_sent = false
+      booking.reminder_channel = ''
+      booking.reminder_error = ''
       if (raw && (booking.status === 'new' || booking.status === 'cancelled')) {
         booking.status = 'confirmed'
       }
@@ -176,7 +201,37 @@ function applyPatch(booking: Booking, fields: Record<string, unknown>): string |
   }
 
   if ('reminder_sent' in fields) booking.reminder_sent = Boolean(fields.reminder_sent)
+
+  if ('notify_channel' in fields) {
+    const channel = String(fields.notify_channel ?? '').trim()
+    if (channel && !(channel in MOCK_CHANNELS)) return `Неизвестный канал связи: ${channel}`
+    booking.notify_channel = channel as NotifyChannel | ''
+  }
   return null
+}
+
+/** Как messaging.resolve_channel на сервере. */
+function resolveChannel(booking: Booking, requested: string): string {
+  if (requested) return requested
+  if (booking.notify_channel) return booking.notify_channel
+  return booking.tg_linked ? 'telegram' : 'whatsapp'
+}
+
+function handleMessage(code: string, body: Record<string, unknown>): ApiResult<unknown> {
+  const booking = findBooking(code)
+  if (!booking) return fail(404, `Заявка ${code} не найдена`)
+  const text = String(body.text ?? '').trim()
+  if (!text) return fail(400, 'Пустое сообщение')
+  if (text.length > 1000) return fail(400, 'Сообщение длиннее 1000 символов')
+  const channel = resolveChannel(booking, String(body.channel ?? '').trim())
+  if (!(channel in MOCK_CHANNELS)) return fail(400, `Неизвестный канал: ${channel}`)
+  if (!MOCK_CHANNELS[channel as NotifyChannel]) {
+    return { ok: false, status: 502, error: 'SMS ещё не подключено' }
+  }
+  if (channel === 'telegram' && !booking.tg_linked) {
+    return { ok: false, status: 502, error: 'Клиент ещё не открывал бота — Telegram недоступен' }
+  }
+  return { ok: true, data: { ok: true, channel } }
 }
 
 function findBooking(code: string): Booking | undefined {
@@ -202,7 +257,8 @@ function handleList(date: string): ApiResult<unknown> {
       scheduled: scheduled.map((b) => ({ ...b })),
       unscheduled: unscheduled.map((b) => ({ ...b })),
       services: [...SERVICES],
-      settings: gridSettings()
+      settings: gridSettings(),
+      channels: { ...MOCK_CHANNELS }
     }
   }
 }
@@ -231,11 +287,12 @@ function handleCreate(body: Record<string, unknown>): ApiResult<unknown> {
     reminder_sent: false,
     called: false,
     called_at: null,
-    created_at: nowStamp()
+    created_at: nowStamp(),
+    ...LATE_FIELDS
   }
 
   const patch: Record<string, unknown> = {}
-  for (const key of ['status', 'called', 'reminder_sent']) {
+  for (const key of ['status', 'called', 'reminder_sent', 'notify_channel']) {
     if (key in body) patch[key] = body[key]
   }
   const error = applyPatch(booking, patch)
@@ -286,7 +343,8 @@ export function mockRequest(
         ok: true,
         services: [...SERVICES],
         statuses: STATUS_ORDER.map((value) => ({ value, label: STATUS_LABEL[value] })),
-        settings: gridSettings()
+        settings: gridSettings(),
+        channels: { ...MOCK_CHANNELS }
       }
     }
   }
@@ -296,6 +354,9 @@ export function mockRequest(
   if (method === 'GET' && segments.length === 1) return handleList(query.get('date') ?? '')
   if (method === 'POST' && segments.length === 1) return handleCreate(body ?? {})
   if (method === 'PATCH' && segments.length === 2) return handlePatch(segments[1], body ?? {})
+  if (method === 'POST' && segments.length === 3 && segments[2] === 'message') {
+    return handleMessage(segments[1], body ?? {})
+  }
   if (method === 'DELETE' && segments.length === 2) {
     return handleDelete(segments[1], (query.get('mode') ?? 'cancel').toLowerCase())
   }

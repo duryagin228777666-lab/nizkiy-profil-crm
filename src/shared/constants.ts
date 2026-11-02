@@ -1,4 +1,4 @@
-import type { AppSettings, BookingStatus, GridSettings } from './types'
+import type { AppSettings, BookingStatus, ChannelAvailability, GridSettings, NotifyChannel } from './types'
 
 /** Список услуг совпадает со store.SERVICES на сервере. */
 export const SERVICES = [
@@ -31,6 +31,17 @@ export const STATUS_LABEL: Record<BookingStatus, string> = {
   done: 'Готово',
   cancelled: 'Отменена'
 }
+
+export const CHANNEL_ORDER: NotifyChannel[] = ['telegram', 'whatsapp', 'sms']
+
+export const CHANNEL_LABEL: Record<NotifyChannel, string> = {
+  telegram: 'Telegram',
+  whatsapp: 'WhatsApp',
+  sms: 'SMS'
+}
+
+/** Пока сервер не ответил — считаем, что писать некуда. */
+export const NO_CHANNELS: ChannelAvailability = { telegram: false, whatsapp: false, sms: false }
 
 /** Заявки, по которым работа закончена: скрываются фильтром «только активные». */
 export const CLOSED_STATUSES: BookingStatus[] = ['done', 'cancelled']
