@@ -1,11 +1,11 @@
 /**
  * Проверки перед сетевыми и IPC-действиями.
- * Renderer не доверенный: даже при XSS он не должен увести токен на чужой хост.
+ * Renderer не доверенный: даже при XSS он не должен увести токены мессенджеров на чужой хост.
  */
 
 const ALLOWED_METHODS = new Set(['GET', 'POST', 'PATCH', 'DELETE'])
 
-/** Только маршруты CRM API: без .. и без выхода из /api/crm. */
+/** Только маршруты локального API (контракт прежнего /api/crm сайта): без .. и мусора. */
 const ALLOWED_PATH =
   /^\/(meta|bookings)(\/[A-Z0-9]{5,12})?(\?(date=\d{4}-\d{2}-\d{2}|mode=(cancel|purge)))?$/i
 
@@ -32,44 +32,24 @@ export function sanitizeApiPath(path: unknown): string | null {
   return cleaned
 }
 
-/**
- * Адрес сервера: только http(s), без credentials в URL, без странных портов/схем.
- * localhost и частные сети разрешены — сервис часто крутится на VPS или 127.0.0.1.
- */
-export function sanitizeServerUrl(raw: unknown): string | null {
-  if (typeof raw !== 'string') return null
-  const trimmed = raw.trim().replace(/\/+$/, '')
-  if (!trimmed || trimmed.length > 200) return null
-  let url: URL
-  try {
-    url = new URL(trimmed)
-  } catch {
-    return null
-  }
-  if (url.protocol !== 'http:' && url.protocol !== 'https:') return null
-  if (url.username || url.password) return null
-  if (url.hash) return null
-  // hostname обязателен; запрещаем IP-literal-трюки вроде пустого хоста
-  if (!url.hostname) return null
-  // Собираем канонический origin без path/query — path дописывает apiRequest
-  const port = url.port ? `:${url.port}` : ''
-  return `${url.protocol}//${url.hostname}${port}`
-}
+/** Хосты Green-API: общий api.green-api.com и адреса инстансов вида 7103.api.greenapi.com. */
+const GREEN_API_HOST = /^(\d{1,6}\.)?api\.green-?api\.com$/i
 
-/** Итоговый URL запроса обязан остаться под /api/crm на том же origin. */
-export function buildCrmUrl(baseUrl: string, path: string): string | null {
-  const base = sanitizeServerUrl(baseUrl)
-  const safePath = sanitizeApiPath(path)
-  if (!base || !safePath) return null
+/**
+ * Адрес Green-API из настроек: только https и только хосты Green-API —
+ * иначе токен инстанса из пути запроса уйдёт на чужой сервер.
+ */
+export function sanitizeGreenApiUrl(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null
   let url: URL
   try {
-    url = new URL(`${base}/api/crm${safePath}`)
+    url = new URL(raw.trim())
   } catch {
     return null
   }
-  if (!url.pathname.startsWith('/api/crm')) return null
-  if (url.pathname.includes('..')) return null
-  return url.toString()
+  if (url.protocol !== 'https:' || url.username || url.password || url.port) return null
+  if (!GREEN_API_HOST.test(url.hostname)) return null
+  return `https://${url.hostname.toLowerCase()}`
 }
 
 export function isSafeExternalUrl(url: unknown): boolean {
@@ -90,14 +70,18 @@ export function isSafeExternalUrl(url: unknown): boolean {
   return true
 }
 
-/** Ключи настроек, которые renderer может менять через IPC. */
+/** Ключи настроек, которые renderer может менять через IPC (секреты — отдельно, см. settings.ts). */
 export const SETTINGS_KEYS = [
-  'mode',
-  'serverUrl',
-  'token',
   'slotMinutes',
   'dayStart',
   'dayEnd',
   'defaultDeleteMode',
-  'autoRefreshSec'
+  'autoRefreshSec',
+  'serviceName',
+  'servicePhone',
+  'reminderHours',
+  'greenApiIdInstance',
+  'greenApiUrl',
+  'minimizeToTray',
+  'launchAtLogin'
 ] as const

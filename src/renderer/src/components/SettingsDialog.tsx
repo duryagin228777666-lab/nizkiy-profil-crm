@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { DEFAULT_GRID } from '../../../shared/constants'
-import type { ConnectionMode, DeleteMode, PublicSettings, SettingsPatch } from '../../../shared/types'
+import type { ChannelCheck, DeleteMode, PublicSettings, SettingsPatch } from '../../../shared/types'
 import { IconClose } from './Icons'
 
 interface Props {
@@ -9,37 +9,31 @@ interface Props {
   onClose: () => void
 }
 
-interface FormState {
-  mode: ConnectionMode
-  serverUrl: string
-  /** Пусто = не менять сохранённый токен */
-  token: string
-  tokenTouched: boolean
-  slotMinutes: number | null
-  dayStart: string | null
-  dayEnd: string | null
-  defaultDeleteMode: DeleteMode
-  autoRefreshSec: number
+type FormState = Omit<PublicSettings, 'telegramConfigured' | 'whatsappConfigured'> & {
+  /** Пусто = не менять сохранённый секрет */
+  telegramBotToken: string
+  greenApiToken: string
 }
 
 function toForm(settings: PublicSettings): FormState {
-  return {
-    mode: settings.mode,
-    serverUrl: settings.serverUrl,
-    token: '',
-    tokenTouched: false,
-    slotMinutes: settings.slotMinutes,
-    dayStart: settings.dayStart,
-    dayEnd: settings.dayEnd,
-    defaultDeleteMode: settings.defaultDeleteMode,
-    autoRefreshSec: settings.autoRefreshSec
-  }
+  const { telegramConfigured: _tg, whatsappConfigured: _wa, ...rest } = settings
+  return { ...rest, telegramBotToken: '', greenApiToken: '' }
+}
+
+function secretPlaceholder(configured: boolean, empty: string): string {
+  return configured ? '••••••••  (сохранён, введите новый чтобы заменить)' : empty
+}
+
+function errorText(error: unknown): string {
+  // Ошибка из main приходит как «Error invoking remote method …: Error: <текст>»
+  const message = error instanceof Error ? error.message : String(error)
+  return message.replace(/^.*Error: /, '') || 'Не удалось сохранить настройки'
 }
 
 export function SettingsDialog({ settings, onSave, onClose }: Props) {
   const [form, setForm] = useState<FormState>(() => toForm(settings))
   const [checking, setChecking] = useState(false)
-  const [checkResult, setCheckResult] = useState<{ ok: boolean; text: string } | null>(null)
+  const [checkResult, setCheckResult] = useState<ChannelCheck | null>(null)
 
   const set = (part: Partial<FormState>): void => {
     setForm((current) => ({ ...current, ...part }))
@@ -47,40 +41,31 @@ export function SettingsDialog({ settings, onSave, onClose }: Props) {
   }
 
   function buildPatch(): SettingsPatch {
-    const patch: SettingsPatch = {
-      mode: form.mode,
-      serverUrl: form.serverUrl,
-      slotMinutes: form.slotMinutes,
-      dayStart: form.dayStart,
-      dayEnd: form.dayEnd,
-      defaultDeleteMode: form.defaultDeleteMode,
-      autoRefreshSec: form.autoRefreshSec
-    }
-    // Токен уходит в main только если пользователь что-то ввёл
-    if (form.tokenTouched && form.token.trim()) patch.token = form.token.trim()
+    const { telegramBotToken, greenApiToken, ...rest } = form
+    const patch: SettingsPatch = { ...rest }
+    // Секреты уходят в main только если пользователь что-то ввёл
+    if (telegramBotToken.trim()) patch.telegramBotToken = telegramBotToken.trim()
+    if (greenApiToken.trim()) patch.greenApiToken = greenApiToken.trim()
     return patch
   }
 
-  async function testConnection(): Promise<void> {
+  async function check(channel: 'telegram' | 'whatsapp'): Promise<void> {
     setChecking(true)
     try {
       await window.crm.saveSettings(buildPatch())
-      const result = await window.crm.ping()
-      setCheckResult(
-        result.ok
-          ? {
-              ok: true,
-              text: form.mode === 'mock' ? 'Демо-режим работает.' : 'Сервер отвечает, токен принят.'
-            }
-          : { ok: false, text: result.error }
-      )
+      setCheckResult(await window.crm.checkChannel(channel))
     } catch (error) {
-      setCheckResult({
-        ok: false,
-        text: error instanceof Error ? error.message : 'Не удалось сохранить настройки'
-      })
+      setCheckResult({ ok: false, text: errorText(error) })
     }
     setChecking(false)
+  }
+
+  async function save(): Promise<void> {
+    try {
+      await onSave(buildPatch())
+    } catch (error) {
+      setCheckResult({ ok: false, text: errorText(error) })
+    }
   }
 
   return (
@@ -94,40 +79,87 @@ export function SettingsDialog({ settings, onSave, onClose }: Props) {
         </header>
 
         <div className="modal-body form">
+          <h3 className="field-wide form-section">Telegram</h3>
           <label className="field field-wide">
-            <span>Источник данных</span>
-            <select value={form.mode} onChange={(e) => set({ mode: e.target.value as ConnectionMode })}>
-              <option value="mock">Демо-режим (без сервера, данные на этом компьютере)</option>
-              <option value="server">Сервер сервиса (Flask /api/crm)</option>
-            </select>
-          </label>
-
-          <label className="field field-wide">
-            <span>Адрес сервера</span>
-            <input
-              value={form.serverUrl}
-              placeholder="http://127.0.0.1:5000"
-              disabled={form.mode === 'mock'}
-              onChange={(e) => set({ serverUrl: e.target.value })}
-            />
-          </label>
-
-          <label className="field field-wide">
-            <span>Токен владельца (CRM_TOKEN из .env сервера)</span>
+            <span>Токен бота CRM (от @BotFather; отдельный бот, не бот сайта)</span>
             <input
               type="password"
-              value={form.token}
+              value={form.telegramBotToken}
               autoComplete="off"
-              placeholder={
-                settings.tokenConfigured && !form.tokenTouched
-                  ? '••••••••  (сохранён, введите новый чтобы заменить)'
-                  : 'вставьте токен'
-              }
-              disabled={form.mode === 'mock'}
-              onChange={(e) => set({ token: e.target.value, tokenTouched: true })}
+              placeholder={secretPlaceholder(settings.telegramConfigured, '123456789:AA…')}
+              onChange={(e) => set({ telegramBotToken: e.target.value })}
             />
           </label>
 
+          <h3 className="field-wide form-section">WhatsApp (Green-API)</h3>
+          <label className="field">
+            <span>idInstance</span>
+            <input
+              value={form.greenApiIdInstance}
+              inputMode="numeric"
+              placeholder="1101234567"
+              onChange={(e) => set({ greenApiIdInstance: e.target.value })}
+            />
+          </label>
+          <label className="field">
+            <span>apiTokenInstance</span>
+            <input
+              type="password"
+              value={form.greenApiToken}
+              autoComplete="off"
+              placeholder={secretPlaceholder(settings.whatsappConfigured, 'из личного кабинета')}
+              onChange={(e) => set({ greenApiToken: e.target.value })}
+            />
+          </label>
+          <label className="field field-wide">
+            <span>apiUrl инстанса</span>
+            <input
+              value={form.greenApiUrl}
+              placeholder="https://api.green-api.com"
+              onChange={(e) => set({ greenApiUrl: e.target.value })}
+            />
+          </label>
+
+          <h3 className="field-wide form-section">Напоминания</h3>
+          <label className="field">
+            <span>Название в тексте</span>
+            <input value={form.serviceName} onChange={(e) => set({ serviceName: e.target.value })} />
+          </label>
+          <label className="field">
+            <span>Телефон для переноса</span>
+            <input value={form.servicePhone} onChange={(e) => set({ servicePhone: e.target.value })} />
+          </label>
+          <label className="field">
+            <span>За сколько часов до визита</span>
+            <input
+              type="number"
+              min={1}
+              max={48}
+              value={form.reminderHours}
+              onChange={(e) => {
+                const hours = Number(e.target.value)
+                if (hours > 0) set({ reminderHours: hours })
+              }}
+            />
+          </label>
+          <label className="switch">
+            <input
+              type="checkbox"
+              checked={form.minimizeToTray}
+              onChange={(e) => set({ minimizeToTray: e.target.checked })}
+            />
+            <span>Крестик сворачивает в трей</span>
+          </label>
+          <label className="switch field-wide">
+            <input
+              type="checkbox"
+              checked={form.launchAtLogin}
+              onChange={(e) => set({ launchAtLogin: e.target.checked })}
+            />
+            <span>Запускать вместе с Windows (сразу в трей)</span>
+          </label>
+
+          <h3 className="field-wide form-section">Расписание</h3>
           <label className="field">
             <span>Начало дня</span>
             <input
@@ -177,8 +209,8 @@ export function SettingsDialog({ settings, onSave, onClose }: Props) {
               value={form.defaultDeleteMode}
               onChange={(e) => set({ defaultDeleteMode: e.target.value as DeleteMode })}
             >
-              <option value="cancel">Отменить заявку (status=cancelled, клиент видит отмену)</option>
-              <option value="purge">Удалить из хранилища навсегда</option>
+              <option value="cancel">Отменить заявку (остаётся в списке со статусом «Отменена»)</option>
+              <option value="purge">Удалить навсегда</option>
             </select>
           </label>
 
@@ -186,27 +218,26 @@ export function SettingsDialog({ settings, onSave, onClose }: Props) {
             <p className={`field-wide check ${checkResult.ok ? 'is-ok' : 'is-bad'}`}>{checkResult.text}</p>
           ) : (
             <p className="field-wide hint">
-              Токен хранится только в профиле Windows и не показывается в окне повторно. Часовой пояс —
-              Москва.
+              Заявки и токены хранятся только на этом компьютере, токены зашифрованы и в окне не показываются.
+              Часовой пояс — Москва.
             </p>
           )}
         </div>
 
         <footer className="modal-foot">
-          <button type="button" className="ghost-btn" onClick={() => void testConnection()} disabled={checking}>
-            {checking ? 'Проверяем…' : 'Проверить связь'}
-          </button>
+          <div className="modal-actions">
+            <button type="button" className="ghost-btn" onClick={() => void check('telegram')} disabled={checking}>
+              Проверить Telegram
+            </button>
+            <button type="button" className="ghost-btn" onClick={() => void check('whatsapp')} disabled={checking}>
+              Проверить WhatsApp
+            </button>
+          </div>
           <div className="modal-actions">
             <button type="button" className="ghost-btn" onClick={onClose}>
               Отмена
             </button>
-            <button
-              type="button"
-              className="primary-btn"
-              onClick={() => {
-                void onSave(buildPatch())
-              }}
-            >
+            <button type="button" className="primary-btn" onClick={() => void save()}>
               Сохранить
             </button>
           </div>

@@ -10,6 +10,8 @@ interface Props {
   booking: Booking
   channels: ChannelAvailability
   sending: boolean
+  /** Готовый текст и канал — например, приглашение в Telegram через WhatsApp */
+  draft?: { text: string; channel: NotifyChannel }
   onSend: (text: string, channel: NotifyChannel) => void
   onClose: () => void
 }
@@ -46,9 +48,11 @@ function templates(booking: Booking): Array<{ label: string; text: string }> {
   ]
 }
 
-export function MessageDialog({ booking, channels, sending, onSend, onClose }: Props) {
-  const [text, setText] = useState('')
-  const [channel, setChannel] = useState<NotifyChannel | null>(() => defaultChannel(booking, channels))
+export function MessageDialog({ booking, channels, sending, draft, onSend, onClose }: Props) {
+  const [text, setText] = useState(draft?.text ?? '')
+  const [channel, setChannel] = useState<NotifyChannel | null>(() =>
+    draft && channelUsable(booking, channels, draft.channel) ? draft.channel : defaultChannel(booking, channels)
+  )
   const textRef = useRef<HTMLTextAreaElement | null>(null)
 
   useEffect(() => {

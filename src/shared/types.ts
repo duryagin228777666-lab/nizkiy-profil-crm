@@ -26,6 +26,8 @@ export interface Booking {
   notify_channel: NotifyChannel | ''
   /** Клиент открывал бота — ему можно писать в Telegram */
   tg_linked: boolean
+  /** Ссылка t.me/<бот>?start=<код>; '' — Telegram-бот не настроен */
+  tg_link: string
   /** Куда ушло напоминание ('' — не отправлялось или не дошло) */
   reminder_channel: NotifyChannel | ''
   reminder_error: string
@@ -63,38 +65,50 @@ export interface BookingInput {
 }
 
 export type DeleteMode = 'cancel' | 'purge'
-export type ConnectionMode = 'server' | 'mock'
+
+/** Секреты мессенджеров: живут только в main-процессе, на диске — через safeStorage. */
+export interface Secrets {
+  telegramBotToken: string
+  greenApiToken: string
+}
 
 export interface AppSettings {
-  /** mock — работа без сервера на демо-данных, server — реальный Flask */
-  mode: ConnectionMode
-  serverUrl: string
-  token: string
-  /** Пусто = взять из настроек сервера */
+  /** Пусто = значение по умолчанию из DEFAULT_GRID */
   slotMinutes: number | null
   dayStart: string | null
   dayEnd: string | null
   defaultDeleteMode: DeleteMode
   autoRefreshSec: number
+  /** Подпись в напоминании: «Это шиномонтаж «…»» */
+  serviceName: string
+  /** Телефон для переноса записи в тексте напоминания */
+  servicePhone: string
+  reminderHours: number
+  greenApiIdInstance: string
+  /** Адрес инстанса из личного кабинета Green-API (https://NNNN.api.greenapi.com) */
+  greenApiUrl: string
+  /** Крестик прячет окно в трей, чтобы напоминания продолжали уходить */
+  minimizeToTray: boolean
+  launchAtLogin: boolean
 }
 
 /**
- * Настройки для окна: без секрета. tokenConfigured = токен уже сохранён в профиле.
- * Новый токен передаётся только при saveSettings, если пользователь его ввёл.
+ * Настройки для окна: без секретов. *Configured = секрет уже сохранён в профиле.
+ * Новый секрет передаётся только при saveSettings, если пользователь его ввёл.
  */
-export interface PublicSettings {
-  mode: ConnectionMode
-  serverUrl: string
-  tokenConfigured: boolean
-  slotMinutes: number | null
-  dayStart: string | null
-  dayEnd: string | null
-  defaultDeleteMode: DeleteMode
-  autoRefreshSec: number
+export interface PublicSettings extends AppSettings {
+  telegramConfigured: boolean
+  whatsappConfigured: boolean
 }
 
-/** Поля, которые renderer может прислать в saveSettings. token опционален. */
-export type SettingsPatch = Partial<Omit<AppSettings, 'token'>> & { token?: string }
+/** Поля, которые renderer может прислать в saveSettings. Пустой секрет = не менять. */
+export type SettingsPatch = Partial<AppSettings> & Partial<Secrets>
+
+/** Результат кнопок «Проверить Telegram / WhatsApp» в настройках. */
+export interface ChannelCheck {
+  ok: boolean
+  text: string
+}
 
 export type ApiResult<T> =
   | { ok: true; data: T }

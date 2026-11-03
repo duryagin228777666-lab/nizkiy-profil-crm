@@ -58,13 +58,19 @@ export const DEFAULT_GRID: GridSettings = {
   timezone: 'Europe/Moscow'
 }
 
+export const DEFAULT_GREEN_API_URL = 'https://api.green-api.com'
+
 export const DEFAULT_SETTINGS: AppSettings = {
-  mode: 'mock',
-  serverUrl: 'http://127.0.0.1:5000',
-  token: '',
   slotMinutes: null,
   dayStart: null,
   dayEnd: null,
   defaultDeleteMode: 'cancel',
-  autoRefreshSec: 60
+  autoRefreshSec: 60,
+  serviceName: 'Низкий профиль',
+  servicePhone: '+79654357272',
+  reminderHours: DEFAULT_GRID.reminder_hours,
+  greenApiIdInstance: '',
+  greenApiUrl: DEFAULT_GREEN_API_URL,
+  minimizeToTray: true,
+  launchAtLogin: false
 }

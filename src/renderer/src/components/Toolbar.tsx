@@ -1,7 +1,7 @@
 import { forwardRef } from 'react'
 import { countActiveFilters, EMPTY_FILTERS, type Filters } from '../lib/filters'
 import { formatDateShort, relativeDayLabel, shiftDate, todayIso } from '../../../shared/time'
-import type { AppPage, ConnectionMode } from '../../../shared/types'
+import type { AppPage, ChannelAvailability } from '../../../shared/types'
 import {
   IconChevronLeft,
   IconChevronRight,
@@ -22,7 +22,7 @@ interface Props {
   onFiltersChange: (filters: Filters) => void
   services: string[]
   loading: boolean
-  mode: ConnectionMode
+  channels: ChannelAvailability
   lastSync: Date | null
   shownCount: number
   totalCount: number
@@ -42,7 +42,7 @@ export const Toolbar = forwardRef<HTMLInputElement, Props>(function Toolbar(
     onFiltersChange,
     services,
     loading,
-    mode,
+    channels,
     lastSync,
     shownCount,
     totalCount,
@@ -53,6 +53,7 @@ export const Toolbar = forwardRef<HTMLInputElement, Props>(function Toolbar(
   searchRef
 ) {
   const relative = relativeDayLabel(date)
+  const connected = [channels.telegram ? 'Telegram' : '', channels.whatsapp ? 'WhatsApp' : ''].filter(Boolean)
   const activeFilters = countActiveFilters(filters)
   const patch = (part: Partial<Filters>): void => onFiltersChange({ ...filters, ...part })
 
@@ -201,10 +202,10 @@ export const Toolbar = forwardRef<HTMLInputElement, Props>(function Toolbar(
           показано <b>{shownCount}</b> из {totalCount}
         </span>
         <span
-          className={`conn conn-${mode}`}
-          title={mode === 'mock' ? 'Демо-данные на этом компьютере' : 'Заявки с сервера сервиса'}
+          className={`conn ${connected.length > 0 ? 'conn-ok' : 'conn-warn'}`}
+          title="Куда CRM может отправлять сообщения и напоминания (настраивается в ⚙)"
         >
-          {mode === 'mock' ? 'Демо-режим' : 'Сервер'}
+          {connected.length > 0 ? connected.join(' · ') : 'Мессенджеры не подключены'}
         </span>
         <span className="sync">
           {loading ? 'обновление…' : lastSync ? `обновлено ${lastSync.toLocaleTimeString('ru-RU')}` : '—'}

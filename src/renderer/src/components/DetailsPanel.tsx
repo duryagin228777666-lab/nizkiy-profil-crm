@@ -10,6 +10,9 @@ interface Props {
   channels: ChannelAvailability
   onChannelChange: (booking: Booking, channel: NotifyChannel | '') => void
   onMessage: (booking: Booking) => void
+  /** Отправить клиенту в WhatsApp ссылку на бота, чтобы дальше писать в Telegram */
+  onInviteTelegram: (booking: Booking) => void
+  onCopyTelegramLink: (booking: Booking) => void
   onClose: () => void
   onEdit: (booking: Booking) => void
   onDelete: (booking: Booking) => void
@@ -31,6 +34,8 @@ export function DetailsPanel({
   channels,
   onChannelChange,
   onMessage,
+  onInviteTelegram,
+  onCopyTelegramLink,
   onClose,
   onEdit,
   onDelete,
@@ -155,6 +160,24 @@ export function DetailsPanel({
             Написать
           </button>
         </div>
+        {booking.tg_linked ? (
+          <p className="hint">Telegram подключён — клиент открывал бота</p>
+        ) : booking.tg_link ? (
+          <div className="status-row">
+            <button
+              type="button"
+              className="ghost-btn"
+              onClick={() => onInviteTelegram(booking)}
+              disabled={!channels.whatsapp}
+              title={channels.whatsapp ? 'Отправить ссылку на бота в WhatsApp' : 'WhatsApp не подключён'}
+            >
+              Пригласить в Telegram
+            </button>
+            <button type="button" className="ghost-btn" onClick={() => onCopyTelegramLink(booking)}>
+              Скопировать ссылку
+            </button>
+          </div>
+        ) : null}
       </div>
 
       <div className="details-status">

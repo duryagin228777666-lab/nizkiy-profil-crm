@@ -6,8 +6,8 @@
 
 <p align="center">
   <strong>Настольная CRM для шиномонтажа</strong><br/>
-  Расписание дня · очередь необработанных заявок · обзвон · SMS-флаги<br/>
-  <em>Electron · React · TypeScript · Flask API</em>
+  Расписание дня · очередь необработанных заявок · обзвон · напоминания в Telegram и WhatsApp<br/>
+  <em>Electron · React · TypeScript · Telegram Bot API · Green-API</em>
 </p>
 
 <p align="center">
@@ -31,7 +31,7 @@
 | Записи только в Telegram | День на временной сетке |
 | Один клиент «в голове» | 2–3 клиента в слот 10:00 — норма |
 | Не видно, обзвонили ли | Индикаторы обзвона и SMS |
-| Сайт / бот / ручные заметки | Одно хранилище, один REST API |
+| Напоминания вручную | CRM сама пишет клиенту за N часов до визита |
 
 ---
 
@@ -41,11 +41,14 @@
 - **Несколько клиентов в одном слоте** — карточки стеком, счётчик на переполненных ячейках
 - **Необработанные** — отдельная страница для заявок без времени (обычно с сайта)
 - **Drag & drop** — перенос карточки в слот назначает `visit_at` и сбрасывает SMS-флаг
-- **Обзвон / SMS** — два независимых индикатора (`called` ≠ `reminder_sent`)
+- **Обзвон / напоминание** — два независимых индикатора (`called` ≠ `reminder_sent`)
+- **Напоминания** — за N часов до визита в Telegram или WhatsApp; не дошло — уведомление Windows «позвоните клиенту»
+- **Сообщения клиенту** — из карточки, с шаблонами; приглашение в Telegram-бота ссылкой через WhatsApp
+- **Работает в трее** — крестик сворачивает окно, напоминания продолжают уходить; автозапуск с Windows
 - **CRUD за секунды** — создать, править, отменить или удалить навсегда
 - **Фильтры и поиск** — по имени, телефону, коду, услуге, статусу обзвона
 - **Горячие клавиши** — `N` новый, `Enter` править, `C` обзвон, `S` SMS, `Del` отменить
-- **Демо-режим** — полный UI без сервера, на локальных данных
+- **Без сервера** — заявки хранятся на компьютере администратора, копия раз в день
 
 ---
 
@@ -68,7 +71,7 @@
 
 <p align="center">
   <img src="docs/screenshots/settings.png" alt="Настройки" width="70%" />
-  <br/><em>Демо-режим или подключение к Flask по CRM_TOKEN</em>
+  <br/><em>Настройки (скриншот старой версии)</em>
 </p>
 
 ---
@@ -76,25 +79,22 @@
 ## Архитектура
 
 ```
-┌─────────────────────┐         Bearer token          ┌──────────────────────┐
-│  Electron CRM       │  ──────────────────────────►  │  Flask /api/crm/*     │
-│  React renderer     │                               │  то же bookings.json │
-│  main-process HTTP  │  ◄──────────────────────────  │  что сайт и Telegram │
-└─────────────────────┘         JSON Booking          └──────────────────────┘
-         │
-         │  токен НЕ в renderer
-         ▼
-   %APPDATA% settings.json
+┌──────────────┐   IPC   ┌─────────────────────────┐  HTTPS  ┌──────────────────┐
+│  React UI    │ ──────► │  main-процесс           │ ──────► │ api.telegram.org │
+│  (renderer)  │ ◄────── │  localStore · reminders │ ──────► │ Green-API        │
+└──────────────┘         │  telegram (getUpdates)  │         └──────────────────┘
+                         └────────────┬────────────┘
+                                      ▼
+            %APPDATA%/NizkiyProfil CRM: bookings.json, backups/, secrets.json (DPAPI)
 ```
 
-**Почему Electron, а не Tauri / веб.** Один runtime — Node.js. Запросы к API идут из main-процесса: не нужен CORS, секрет владельца не попадает в окно. UI — системный шрифт, плотная таблица, нативное меню и диалоги подтверждения.
+**Почему Electron, а не Tauri / веб.** Один runtime — Node.js. Сеть и файлы — только в main-процессе: токены мессенджеров не попадают в окно. UI — системный шрифт, плотная таблица, нативное меню и диалоги подтверждения.
 
 **Безопасность (заложена в MVP):**
 
-- IPC только из своего окна, whitelist путей `/api/crm`
-- SSRF-защита: только `http(s)`, без credentials в URL, `redirect: 'error'`
-- токен не отдаётся в renderer повторно (`tokenConfigured`)
-- на сервере: сравнение токена через SHA-256 + hmac, антибрутфорс, лимиты полей
+- IPC только из своего окна, whitelist путей локального API
+- сеть только на `api.telegram.org` и хосты Green-API, `redirect: 'error'`, токены вырезаются из ошибок
+- токены зашифрованы `safeStorage` (DPAPI) и не отдаются в renderer (`telegramConfigured`)
 - `sandbox: true`, DevTools скрыты в релизной сборке
 
 ---
@@ -105,10 +105,11 @@
 |---|---|
 | Desktop | Electron 31, electron-vite, electron-builder |
 | UI | React 18, TypeScript, CSS (без UI-kit) |
-| API-клиент | fetch в main-процессе + contextBridge |
-| Бэкенд (соседний репо) | Flask, JSON-store, Telegram-бот |
+| Хранилище | JSON в профиле Windows, атомарная запись, ежедневные копии |
+| Мессенджеры | Telegram Bot API (long-poll), Green-API (WhatsApp) |
+| Тесты | Vitest |
 
-Модель заявки совместима с сайтом и ботом:
+Модель заявки (совместима с прежним форматом сайта):
 
 ```ts
 Booking {
@@ -116,7 +117,8 @@ Booking {
   status: new | confirmed | in_progress | done | cancelled
   visit_at: "YYYY-MM-DD HH:MM" | ""   // Москва
   called, called_at                   // обзвон
-  reminder_sent                       // SMS
+  reminder_sent, reminder_channel     // напоминание
+  notify_channel                      // telegram | whatsapp | "" (авто)
   source: site | bot | crm
 }
 ```
@@ -128,12 +130,13 @@ Booking {
 ```bash
 # Node.js 18+
 npm install
-npm run dev          # демо-режим из коробки
+npm run dev
 ```
 
-Подключение к живому серверу: **⚙ Настройки** → источник «Сервер» → URL + `CRM_TOKEN`.
+**⚙ Настройки:** токен отдельного бота от @BotFather (Telegram) и `idInstance` / `apiTokenInstance` / `apiUrl` из кабинета Green-API (WhatsApp).
 
 ```bash
+npm test
 npm run typecheck
 npm run dist         # установщик Windows .exe
 ```
@@ -144,7 +147,7 @@ npm run dist         # установщик Windows .exe
 
 ```
 src/
-├── main/          # окно, меню, IPC, HTTP, mock API, security
+├── main/          # окно, трей, IPC, локальное хранилище, мессенджеры, напоминания
 ├── preload/       # contextBridge → window.crm
 ├── renderer/      # React UI: день, inbox, формы
 └── shared/        # типы, время (Europe/Moscow), телефон РФ
@@ -156,9 +159,10 @@ src/
 
 - [x] Сетка дня и multi-booking в слоте
 - [x] Страница необработанных заявок
-- [x] Демо API + контракт под Flask
-- [x] Базовая безопасность IPC / токена
-- [ ] Реальная отправка SMS (SMS.ru на бэкенде)
+- [x] Локальное хранилище без сервера
+- [x] Напоминания и сообщения в Telegram / WhatsApp
+- [x] Базовая безопасность IPC / токенов
+- [ ] Отправка SMS (SMS.ru)
 - [ ] Иконка и автообновление установщика
 - [ ] macOS / Linux сборки
 

@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
   ApiResult,
+  ChannelCheck,
   HttpMethod,
   MenuCommand,
   PublicSettings,
@@ -18,8 +19,8 @@ const bridge = {
   request(method: HttpMethod, path: string, body?: Record<string, unknown>): Promise<ApiResult<unknown>> {
     return ipcRenderer.invoke('crm:request', method, path, body)
   },
-  ping(): Promise<ApiResult<unknown>> {
-    return ipcRenderer.invoke('crm:ping')
+  checkChannel(channel: 'telegram' | 'whatsapp'): Promise<ChannelCheck> {
+    return ipcRenderer.invoke('crm:check-channel', channel)
   },
   getSettings(): Promise<PublicSettings> {
     return ipcRenderer.invoke('crm:settings:get')

@@ -1,12 +1,24 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, Notification, shell } from 'electron'
 import { join } from 'node:path'
-import { apiRequest, pingServer } from './api'
-import { resetMock } from './mock'
-import { isAllowedMethod, isSafeExternalUrl, sanitizeApiPath } from './security'
-import { getPublicSettings, saveSettings } from './settings'
+import { formatPhone } from '../shared/phone'
+import { formatVisitHuman } from '../shared/time'
 import type { HttpMethod, MenuCommand, SettingsPatch } from '../shared/types'
+import { apiRequest } from './api'
+import { onStoreChanged } from './localStore'
+import { checkTelegram, checkWhatsApp } from './messaging'
+import { startReminders } from './reminders'
+import { isAllowedMethod, isSafeExternalUrl, sanitizeApiPath } from './security'
+import { getPublicSettings, getSecrets, getSettings, onSettingsChanged, saveSettings, userDataDir } from './settings'
+import { restartTelegram } from './telegram'
+import { createTray } from './tray'
+
+/** Флаг автозапуска Windows: окно не показываем, CRM сразу уходит в трей. */
+const HIDDEN_ARG = '--hidden'
 
 let mainWindow: BrowserWindow | null = null
+let quitting = false
+/** Автозапуск прячет только первое окно; открытое из трея потом показывается как обычно */
+let startHidden = process.argv.includes(HIDDEN_ARG)
 
 function send(command: MenuCommand): void {
   mainWindow?.webContents.send('crm:menu', command)
@@ -73,21 +85,8 @@ function buildMenu(): void {
       label: 'Справка',
       submenu: [
         {
-          label: 'Сбросить демо-данные',
-          click: async () => {
-            const { response } = await dialog.showMessageBox({
-              type: 'question',
-              buttons: ['Отмена', 'Сбросить'],
-              defaultId: 0,
-              cancelId: 0,
-              message: 'Вернуть демо-данные к исходному состоянию?',
-              detail: 'Затрагивает только локальный демо-режим. Заявки на сервере не изменятся.'
-            })
-            if (response === 1) {
-              resetMock()
-              send('refresh')
-            }
-          }
+          label: 'Открыть папку с данными',
+          click: () => void shell.openPath(userDataDir())
         },
         {
           label: 'О программе',
@@ -97,7 +96,7 @@ function buildMenu(): void {
               message: `Низкий профиль CRM ${app.getVersion()}`,
               detail:
                 'Рабочее место администратора шиномонтажа.\n' +
-                'Заявки хранятся на сервере сервиса, время — Москва (UTC+3).'
+                'Заявки хранятся на этом компьютере (копия раз в день в backups), время — Москва (UTC+3).'
             })
           }
         }
@@ -128,7 +127,22 @@ function createWindow(): void {
     }
   })
 
-  mainWindow.once('ready-to-show', () => mainWindow?.show())
+  const hidden = startHidden
+  startHidden = false
+  mainWindow.once('ready-to-show', () => {
+    if (!hidden) mainWindow?.show()
+  })
+  // Крестик прячет окно в трей: процесс жив — бот и напоминания работают
+  mainWindow.on('close', (event) => {
+    if (!quitting && getSettings().minimizeToTray) {
+      event.preventDefault()
+      mainWindow?.hide()
+    }
+  })
+  // Выход из Windows: не держим окно через close → hide, иначе система ждёт CRM
+  mainWindow.on('session-end', () => {
+    quitting = true
+  })
   mainWindow.on('closed', () => {
     mainWindow = null
   })
@@ -179,6 +193,50 @@ async function loadDevUrl(win: BrowserWindow, url: string, attempts = 40): Promi
   }
 }
 
+function showWindow(): void {
+  if (!mainWindow) {
+    createWindow()
+    return
+  }
+  if (mainWindow.isMinimized()) mainWindow.restore()
+  mainWindow.show()
+  mainWindow.focus()
+}
+
+function applyLoginItem(): void {
+  // В dev автозапуск прописал бы голый electron.exe — только для установленной CRM
+  if (!app.isPackaged) return
+  app.setLoginItemSettings({ openAtLogin: getSettings().launchAtLogin, args: [HIDDEN_ARG] })
+}
+
+function notifyReminderFailed(name: string, phone: string, visitAt: string, error: string): void {
+  if (!Notification.isSupported()) return
+  const notification = new Notification({
+    title: 'Напоминание не дошло — позвоните клиенту',
+    body: `${name}, ${formatPhone(phone)} · ${formatVisitHuman(visitAt)}. ${error}`
+  })
+  notification.on('click', showWindow)
+  notification.show()
+}
+
+/** Бот Telegram, напоминания и автозапуск — всё, что работает без участия окна. */
+function startBackground(): void {
+  let botToken = getSecrets().telegramBotToken
+  restartTelegram()
+  startReminders((booking, error) => notifyReminderFailed(booking.name, booking.phone, booking.visit_at, error))
+  applyLoginItem()
+
+  onSettingsChanged(() => {
+    applyLoginItem()
+    const nextToken = getSecrets().telegramBotToken
+    if (nextToken !== botToken) {
+      botToken = nextToken
+      restartTelegram()
+    }
+  })
+  onStoreChanged(() => send('refresh'))
+}
+
 function registerIpc(): void {
   ipcMain.handle('crm:request', (event, method: unknown, path: unknown, body?: unknown) => {
     if (!isOurSender(event)) return { ok: false, error: 'Forbidden', status: 403 }
@@ -192,9 +250,11 @@ function registerIpc(): void {
     return apiRequest(method, path as string, safeBody)
   })
 
-  ipcMain.handle('crm:ping', (event) => {
-    if (!isOurSender(event)) return { ok: false, error: 'Forbidden', status: 403 }
-    return pingServer()
+  ipcMain.handle('crm:check-channel', (event, channel: unknown) => {
+    if (!isOurSender(event)) return { ok: false, text: 'Forbidden' }
+    if (channel === 'telegram') return checkTelegram()
+    if (channel === 'whatsapp') return checkWhatsApp()
+    return { ok: false, text: 'Неизвестный канал' }
   })
 
   ipcMain.handle('crm:settings:get', (event) => {
@@ -241,11 +301,9 @@ function registerIpc(): void {
 if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
-  app.on('second-instance', () => {
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore()
-      mainWindow.focus()
-    }
+  app.on('second-instance', showWindow)
+  app.on('before-quit', () => {
+    quitting = true
   })
 
   void app.whenReady().then(() => {
@@ -253,6 +311,8 @@ if (!app.requestSingleInstanceLock()) {
     registerIpc()
     buildMenu()
     createWindow()
+    createTray(showWindow, () => app.quit())
+    startBackground()
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow()

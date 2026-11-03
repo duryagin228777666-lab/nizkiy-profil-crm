@@ -43,6 +43,7 @@ export default function App() {
   const [dropTarget, setDropTarget] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [messageTarget, setMessageTarget] = useState<Booking | null>(null)
+  const [messageDraft, setMessageDraft] = useState<{ text: string; channel: NotifyChannel } | undefined>()
   const [sending, setSending] = useState(false)
 
   const searchRef = useRef<HTMLInputElement | null>(null)
@@ -171,9 +172,34 @@ export default function App() {
         push('error', 'Нет доступного канала: клиент не в Telegram, WhatsApp не подключён')
         return
       }
+      setMessageDraft(undefined)
       setMessageTarget(booking)
     },
     [day.day.channels, push]
+  )
+
+  const inviteTelegram = useCallback(
+    (booking: Booking) => {
+      const serviceName = settings?.serviceName ?? ''
+      setMessageDraft({
+        channel: 'whatsapp',
+        text:
+          `Здравствуйте! Это шиномонтаж «${serviceName}». Чтобы получать напоминания о записи в Telegram, ` +
+          `откройте ссылку и нажмите «Старт»: ${booking.tg_link}`
+      })
+      setMessageTarget(booking)
+    },
+    [settings]
+  )
+
+  const copyTelegramLink = useCallback(
+    (booking: Booking) => {
+      navigator.clipboard.writeText(booking.tg_link).then(
+        () => push('success', 'Ссылка на бота скопирована'),
+        () => push('error', 'Не удалось скопировать ссылку')
+      )
+    },
+    [push]
   )
 
   const sendClientMessage = useCallback(
@@ -403,7 +429,7 @@ export default function App() {
         onFiltersChange={setFilters}
         services={day.day.services}
         loading={day.loading}
-        mode={settings.mode}
+        channels={day.day.channels}
         lastSync={day.lastSync}
         shownCount={shownCount}
         totalCount={pageBookings.length}
@@ -451,6 +477,8 @@ export default function App() {
             channels={day.day.channels}
             onChannelChange={(booking, channel) => void changeChannel(booking, channel)}
             onMessage={openMessage}
+            onInviteTelegram={inviteTelegram}
+            onCopyTelegramLink={copyTelegramLink}
           />
         </main>
       ) : (
@@ -492,6 +520,8 @@ export default function App() {
             channels={day.day.channels}
             onChannelChange={(booking, channel) => void changeChannel(booking, channel)}
             onMessage={openMessage}
+            onInviteTelegram={inviteTelegram}
+            onCopyTelegramLink={copyTelegramLink}
           />
         </main>
       )}
@@ -501,6 +531,7 @@ export default function App() {
           booking={messageTarget}
           channels={day.day.channels}
           sending={sending}
+          draft={messageDraft}
           onSend={(text, channel) => void sendClientMessage(text, channel)}
           onClose={() => setMessageTarget(null)}
         />
@@ -522,7 +553,11 @@ export default function App() {
       {settingsOpen ? (
         <SettingsDialog
           settings={settings}
-          onClose={() => setSettingsOpen(false)}
+          onClose={() => {
+            setSettingsOpen(false)
+            // «Проверить …» уже сохранил настройки — подтягиваем их и при «Отмене»
+            window.crm.getSettings().then(setSettings, () => push('error', 'Не удалось перечитать настройки'))
+          }}
           onSave={async (patch) => {
             const next = await window.crm.saveSettings(patch)
             setSettings(next)

@@ -9,10 +9,9 @@
 | Можно | Нельзя без прямой просьбы |
 |---|---|
 | Всё внутри `crm/` (кроме сгенерированного, см. ниже) | Любые файлы выше `crm/` |
-| Читать контракт API: `../server/crm_api.py`, CRM-часть `../server/store.py` (от `# CRM:` до конца) | Править `../server/*` — это чужой репозиторий (сайт + бот) |
+| | Править `../server/*` — это чужой репозиторий (сайт + бот), CRM от него больше не зависит |
 | | Читать `../.env`, `bookings.json`, токены |
 
-Если задача требует правки бэкенда (новое поле, эндпоинт) — сначала сказать об этом и спросить.
 Коммиты — только в репозиторий `crm/` (из этой папки), не в родительский.
 
 Не читать (сгенерировано / тяжёлое): `node_modules/`, `out/`, `release/`, `graphify-out/cache/`.
@@ -22,7 +21,9 @@
 Electron 31 + electron-vite, React 18, TypeScript 5.5 (strict), CSS без UI-kit.
 
 ```
-src/main/       main-процесс: api.ts (HTTP), security.ts (SSRF/whitelist), mock.ts (демо), settings.ts
+src/main/       main-процесс: localStore.ts (заявки) + storeFile.ts (диск), messaging.ts (Telegram/Green-API),
+                telegram.ts (getUpdates, /start КОД), reminders.ts, tray.ts, settings.ts (+ secrets),
+                security.ts, rules.ts (чистая логика под тесты)
 src/preload/    contextBridge — единственный мост renderer ↔ main
 src/renderer/   React UI: App.tsx, components/, hooks/, lib/
 src/shared/     типы Booking, время (Europe/Moscow), телефоны, константы
@@ -30,19 +31,22 @@ src/shared/     типы Booking, время (Europe/Moscow), телефоны, 
 
 ## Правила проекта
 
-- Сеть только из main-процесса; токен никогда не попадает в renderer (`tokenConfigured`).
-- Пути API — только через whitelist `/api/crm` в `security.ts`.
+- Заявки локально: `%APPDATA%/NizkiyProfil CRM/bookings.json` (+ `backups/`). Сайт и сервер не используются.
+- Сеть только из main-процесса и только на api.telegram.org / хосты Green-API; токены не попадают в renderer (`telegramConfigured`, `whatsappConfigured`).
+- Пути IPC-API — только через whitelist в `security.ts`.
+- Боту CRM нужен свой токен: бот сайта даст 409 на getUpdates.
 - Время везде Europe/Moscow, `visit_at` = `"YYYY-MM-DD HH:MM"` или `""` (необработанная).
 - `called` и `reminder_sent` — независимые флаги.
-- Модель `Booking` должна оставаться совместимой с `../server/store.py`.
+- Модель `Booking` держим совместимой с прежним форматом `../server/store.py` (перенос старых записей).
 - `UnscheduledPanel.tsx` не используется (заменён `InboxPage.tsx`).
 
 ## Команды
 
 ```powershell
+npm test            # vitest: rules, storeFile, security
 npm run typecheck   # проверка типов
 npm run build       # сборка main + preload + renderer
-npm run dev         # запуск (по умолчанию демо-режим, сервер не нужен)
+npm run dev         # запуск
 npm run dist        # установщик в release/
 ```
 
